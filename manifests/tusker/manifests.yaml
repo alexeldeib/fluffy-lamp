@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: &name tusker
+  labels:
+    app: *name
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: *name
+  template:
+    metadata:
+      labels:
+        app: *name
+    spec:
+      containers:
+      - image: docker.io/alexeldeib/tusker:latest
+        imagePullPolicy: IfNotPresent
+        name: *name
+        envFrom:
+        - secretRef:
+            name: pg-config
+        resources: {}
+        volumeMounts:
+        - name: tusker-schema
+          readOnly: true
+          mountPath: "/opt/schema"
+        - name: tusker-migrations
+          readOnly: false
+          mountPath: "/opt/migrations"
+        - name: tusker-config
+          readOnly: false
+          mountPath: "/opt/config"
+      terminationGracePeriodSeconds: 60
+      volumes: 
+      - name: tusker-schema
+        configMap:
+          name: tusker-schema
+      - name: tusker-migrations
+        configMap:
+          name: tusker-migrations
+      - name: tusker-config
+        configMap:
+          name: tusker-config
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: &name tusker-config
+  labels:
+    app: *name
+data:
+  tusker.toml: |
+    [schema]
+    filename = "/opt/schema/schema.sql"
+
+    [migrations]
+    filename = "/opt/migrations/*.sql"
+
+    [database]
+    host = "postgresql.default.svc.cluster.local"
+    #port = 5432
+    user = "$PGUSER"
+    password = "$PGPASSWORD"
+    dbname = "tusker"
