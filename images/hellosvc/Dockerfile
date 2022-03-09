@@ -6,7 +6,7 @@ RUN apt update && apt install -y curl gnupg2
 RUN curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc > /tmp/pgsql.gpg
 RUN apt-key add /tmp/pgsql.gpg
 RUN echo "deb http://apt.postgresql.org/pub/repos/apt/ buster-pgdg main" > /etc/apt/sources.list.d/pgdg.list
-RUN apt-get update && apt-get install -y postgresql-client-12
+RUN apt-get update && apt-get install -y postgresql-client-12 jq
 
 WORKDIR /workspace
 # Copy the Go Modules manifests
@@ -18,13 +18,14 @@ RUN go mod download
 
 # Copy the go source
 COPY app/cmd/ app/cmd/
-COPY app/internal/ app/internal/
 
 # Build
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -o bin/app app/cmd/main.go
 
 COPY images/hellosvc/entrypoint.sh /entrypoint.sh
 RUN chmod a+x /entrypoint.sh
+
+RUN go install github.com/tsenart/vegeta@v12.7.0
 
 ENTRYPOINT [ "/entrypoint.sh" ]
 
