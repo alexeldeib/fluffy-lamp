@@ -8,8 +8,5 @@ push APP: (dockerize APP)
 dockerize APP:
 	docker build -f images/{{APP}}/Dockerfile images/{{APP}} -t alexeldeib/{{APP}}:latest
 
-wire:
-	cd app/internal && wire 
-
-build: wire
+build:
 	go build -o bin/app app/cmd/main.go

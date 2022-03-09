@@ -32,7 +32,7 @@ spec:
         - name: tusker-config
           readOnly: false
           mountPath: "/opt/config"
-      terminationGracePeriodSeconds: 60
+      terminationGracePeriodSeconds: 5
       volumes: 
       - name: tusker-schema
         configMap:
