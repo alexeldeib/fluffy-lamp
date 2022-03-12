@@ -1,6 +1,6 @@
 default: push-all
 
-push-all: (push "postgresql")
+push-all: (push "postgresql") (push "hellosvc") (push "rabbit") (push "tusker")
 
 push APP: (dockerize APP)
 	docker push alexeldeib/{{APP}}:latest

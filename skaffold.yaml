@@ -4,26 +4,34 @@ metadata:
   name: hellosvc
 build:
   artifacts:
-  - image: docker.io/alexeldeib/postgresql
-    context: images/postgresql
-    docker:
-      dockerfile: Dockerfile
-  - image: docker.io/alexeldeib/tusker
-    context: images/tusker
-    docker:
-      dockerfile: Dockerfile
-  - image: docker.io/alexeldeib/hellosvc
-    context: .
-    docker:
-      dockerfile: images/hellosvc/Dockerfile
+    - image: docker.io/alexeldeib/postgresql
+      context: images/postgresql
+      docker:
+        dockerfile: Dockerfile
+    - image: docker.io/alexeldeib/tusker
+      context: images/tusker
+      docker:
+        dockerfile: Dockerfile
+    - image: docker.io/alexeldeib/hellosvc
+      context: .
+      docker:
+        dockerfile: images/hellosvc/Dockerfile
+    - image: docker.io/alexeldeib/rabbit
+      context: images/rabbit
+      docker:
+        dockerfile: Dockerfile
 deploy:
   kustomize:
     paths:
-    - manifests/postgresql
-    - manifests/tusker
-    - manifests/hellosvc
+      - manifests/postgresql
+      - manifests/tusker
+      - manifests/hellosvc
+      - manifests/rabbit
     hooks:
       before:
         - host:
             command: ["bash", "manifests/postgresql/pre-deploy.sh"]
+            os: [linux]
+        - host:
+            command: ["bash", "manifests/rabbit/pre-deploy.sh"]
             os: [linux]
