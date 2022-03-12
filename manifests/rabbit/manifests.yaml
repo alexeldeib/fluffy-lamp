@@ -5,32 +5,39 @@ metadata:
   labels:
     app: rabbit
 data:
-  rabbitmq.conf: |
+  rabbitmq: |
     # See https://github.com/rabbitmq/rabbitmq-server/blob/master/docs/rabbitmq.conf.example
     # Port
+    auth_backends.1 = internal
+
     listeners.tcp.default = 5672
 
     # Logging
     #log.file.level = info #default
-    log.file.level = debug
+    log.console = true
+    log.console.level = debug
 
     # Restrict guest to localhost.
     loopback_users.guest = true
 
-    # Authentication
-    auth_backends.1 = cache
-    auth_cache.cached_backend = http
-    auth_http.http_method = post
-    auth_http.user_path = http://127.0.0.1:3030/auth/user
-    auth_http.vhost_path = http://127.0.0.1:3030/auth/vhost
-    auth_http.resource_path = http://127.0.0.1:3030/auth/resource
-    auth_http.topic_path = http://127.0.0.1:3030/auth/topic
+    # # Authentication
+    # auth_backends.1 = cache
+    # auth_cache.cached_backend = http
+    # auth_http.http_method = post
+    # auth_http.user_path = http://127.0.0.1:3030/auth/user
+    # auth_http.vhost_path = http://127.0.0.1:3030/auth/vhost
+    # auth_http.resource_path = http://127.0.0.1:3030/auth/resource
+    # auth_http.topic_path = http://127.0.0.1:3030/auth/topic
 
     # Cluster formation
     cluster_formation.peer_discovery_backend = rabbit_peer_discovery_k8s
     cluster_formation.k8s.service_name = rabbitmq-headless
     cluster_formation.k8s.address_type = hostname
     cluster_formation.k8s.hostname_suffix = .rabbitmq-headless.default.svc.cluster.local
+    cluster_formation.randomized_startup_delay_range.min = 0
+    cluster_formation.randomized_startup_delay_range.max = 60
+    cluster_partition_handling = pause_minority
+    queue_master_locator = min-masters
 
     # Management options
     management.disable_stats = false
@@ -140,6 +147,36 @@ spec:
     - name: mgmt
       port: 15672
       targetPort: mgmt
+    - name: rpc
+      port: 25672
+      targetPort: rpc
+  selector:
+    app: rabbitmq
+    iter: "1"
+---
+# Headless service
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+spec:
+  type: ClusterIP
+  ports:
+    - name: epmd
+      port: 4369
+      targetPort: epmd
+    - name: amqp
+      port: 5672
+      targetPort: amqp
+    - name: stats
+      port: 15692
+      targetPort: stats
+    - name: mgmt
+      port: 15672
+      targetPort: mgmt
+    - name: rpc
+      port: 25672
+      targetPort: rpc
   selector:
     app: rabbitmq
     iter: "1"
@@ -156,7 +193,7 @@ metadata:
 spec:
   serviceName: rabbitmq-headless
   podManagementPolicy: OrderedReady
-  replicas: 3
+  replicas: 1
   updateStrategy:
     type: RollingUpdate
   selector:
@@ -173,7 +210,7 @@ spec:
       terminationGracePeriodSeconds: 10
       containers:
         - name: rabbitmq
-          image: "docker.io/alexeldeib/rabbit:latest"
+          image: "docker.io/alexeldeib/rabbit:dev"
           imagePullPolicy: IfNotPresent
           args: ["rabbitmq-server"]
           env:
@@ -185,6 +222,11 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            - name: COOKIE
+              valueFrom:
+                secretKeyRef:
+                  name: rabbit-secret
+                  key: COOKIE
             - name: RABBITMQ_NODENAME
               value: "rabbit@$(MY_POD_NAME).rabbitmq-headless.$(MY_POD_NAMESPACE).svc.cluster.local"
             - name: RABBITMQ_USE_LONGNAME
@@ -203,6 +245,8 @@ spec:
               containerPort: 15692
             - name: mgmt
               containerPort: 15672
+            - name: rpc
+              containerPort: 25672
           resources: {}
           livenessProbe:
             exec:

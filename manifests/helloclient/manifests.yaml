@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: &name helloclient
+  labels:
+    app: *name
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: *name
+  template:
+    metadata:
+      labels:
+        app: *name
+    spec:
+      containers:
+        - image: docker.io/alexeldeib/helloclient:dev
+          imagePullPolicy: IfNotPresent
+          name: *name
+          env:
+            - name: RABBITMQ_USE_LONGNAME
+              value: "true"
+            - name: COOKIE
+              valueFrom:
+                secretKeyRef:
+                  name: rabbit-secret
+                  key: COOKIE
+          ports:
+            - containerPort: 8080
+              name: http
+          resources: {}
+          volumeMounts:
+            - name: &rabbitconfig rabbitconfig
+              mountPath: "/etc/rabbitmq"
+            - name: &rabbitsecrets rabbitsecrets
+              mountPath: "/etc/secrets"
+      terminationGracePeriodSeconds: 5
+      volumes:
+        - name: *rabbitconfig
+          configMap:
+            name: rabbit-config
+        - name: *rabbitsecrets
+          secret:
+            secretName: rabbit-secret
+---
+

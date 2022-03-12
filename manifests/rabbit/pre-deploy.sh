@@ -1,7 +1,7 @@
 #!/usr/bin/env
 set -eu
 
-COOKIE="$(cat /dev/urandom | tr -dc 'a-zA-Z0-9,.<>!@#^*()-=_+[]{}:;' | fold -w 96 | head -n 1)"
+COOKIE="$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 96 | head -n 1)"
 
 echo "Checking for secret"
 OLD_SECRET="$(kubectl get secret rabbit-secret --ignore-not-found -o yaml)"

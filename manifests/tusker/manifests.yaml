@@ -15,34 +15,34 @@ spec:
         app: *name
     spec:
       containers:
-      - image: docker.io/alexeldeib/tusker:latest
-        imagePullPolicy: IfNotPresent
-        name: *name
-        envFrom:
-        - secretRef:
-            name: pg-config
-        resources: {}
-        volumeMounts:
-        - name: tusker-schema
-          readOnly: true
-          mountPath: "/opt/schema"
-        - name: tusker-migrations
-          readOnly: false
-          mountPath: "/opt/migrations"
-        - name: tusker-config
-          readOnly: false
-          mountPath: "/opt/config"
+        - image: docker.io/alexeldeib/tusker:dev
+          imagePullPolicy: IfNotPresent
+          name: *name
+          envFrom:
+            - secretRef:
+                name: pg-config
+          resources: {}
+          volumeMounts:
+            - name: tusker-schema
+              readOnly: true
+              mountPath: "/opt/schema"
+            - name: tusker-migrations
+              readOnly: false
+              mountPath: "/opt/migrations"
+            - name: tusker-config
+              readOnly: false
+              mountPath: "/opt/config"
       terminationGracePeriodSeconds: 5
-      volumes: 
-      - name: tusker-schema
-        configMap:
-          name: tusker-schema
-      - name: tusker-migrations
-        configMap:
-          name: tusker-migrations
-      - name: tusker-config
-        configMap:
-          name: tusker-config
+      volumes:
+        - name: tusker-schema
+          configMap:
+            name: tusker-schema
+        - name: tusker-migrations
+          configMap:
+            name: tusker-migrations
+        - name: tusker-config
+          configMap:
+            name: tusker-config
 ---
 apiVersion: v1
 kind: ConfigMap

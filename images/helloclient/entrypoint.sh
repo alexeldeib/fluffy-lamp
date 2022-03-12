@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
+
 set -x
 
+# Retries a command on failure.
+# $1 - the max number of attempts
+# $2... - the command to run
 retry() {
     local -r -i max_attempts="$1"; shift
     local -r cmd="$@"
@@ -20,20 +24,11 @@ retry() {
     done
 }
 
-function config() {
-    set -x
-    retry 10 rabbitmqctl await_startup
-
-    rabbitmqctl add_user 'hellosvc' "$(cat /etc/secrets/COOKIE)"
-    rabbitmqctl add_vhost hellosvc
-    rabbitmqctl set_permissions -p hellosvc hellosvc '.*' '.*' '.*'
-}
-
 cp /etc/secrets/COOKIE /var/lib/rabbitmq/.erlang.cookie
 chmod 600 /var/lib/rabbitmq/.erlang.cookie
 
-config &
+# sleep infinity
 
-exec rabbitmq-server
-
-sleep infinity
+retry 10 rabbitmqctl await_startup -n rabbit@rabbitmq-0.rabbitmq-headless.default.svc.cluster.local
+retry 10 rabbitmqctl authenticate_user 'hellosvc' "$(cat /etc/secrets/COOKIE)" -n rabbit@rabbitmq-0.rabbitmq-headless.default.svc.cluster.local
+/workspace/bin/app

@@ -20,6 +20,14 @@ build:
       context: images/rabbit
       docker:
         dockerfile: Dockerfile
+    - image: docker.io/alexeldeib/helloproduce
+      context: .
+      docker:
+        dockerfile: images/helloproduce/Dockerfile
+    - image: docker.io/alexeldeib/helloclient
+      context: .
+      docker:
+        dockerfile: images/helloclient/Dockerfile
 deploy:
   kustomize:
     paths:
@@ -27,6 +35,9 @@ deploy:
       - manifests/tusker
       - manifests/hellosvc
       - manifests/rabbit
+      - manifests/helloclient
+      - manifests/helloproduce
+
     hooks:
       before:
         - host:
