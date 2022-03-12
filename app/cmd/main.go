@@ -13,9 +13,9 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/segmentio/ksuid"
+	"github.com/streadway/amqp"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 )
 
 type Model struct {
@@ -31,9 +31,26 @@ type User struct {
 	LastName  string `json:"lastName,omitempty"`
 }
 
+type Job struct {
+	Model
+	Status string `json:"status,omitempty"`
+}
+
 func (u *User) BeforeCreate(tx *gorm.DB) error {
 	u.ID = ksuid.New()
 	return nil
+}
+
+func (j *Job) BeforeCreate(tx *gorm.DB) error {
+	j.ID = ksuid.New()
+	j.Status = "New"
+	return nil
+}
+
+func failOnError(err error, msg string) {
+	if err != nil {
+		log.Fatalf("%s: %s", msg, err)
+	}
 }
 
 func main() {
@@ -41,23 +58,57 @@ func main() {
 	host, dbname, user, password := os.Getenv("PGHOST"), os.Getenv("PGDATABASE"), os.Getenv("PGUSER"), os.Getenv("PGPASSWORD")
 	driverOptions := fmt.Sprintf("host=%s dbname=%s user=%s password=%s port=5432 sslmode=disable", host, dbname, user, password)
 	db, err := gorm.Open(postgres.Open(driverOptions), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Info),
+		// Logger: logger.Default.LogMode(logger.Info),
 	})
-	if err != nil {
-		log.Fatalln(err)
+
+	failOnError(err, "failed to connect database")
+
+	failOnError(db.AutoMigrate(&User{}, &Job{}), "failed to connect database")
+
+	pass := os.Getenv("COOKIE")
+	conn, err := amqp.Dial(fmt.Sprintf("amqp://hellosvc:%s@rabbitmq-0.rabbitmq-headless.default.svc.cluster.local:5672/hellosvc", pass))
+	failOnError(err, "Failed to connect to RabbitMQ")
+	defer conn.Close()
+
+	ch, err := conn.Channel()
+	failOnError(err, "Failed to open a channel")
+	defer ch.Close()
+
+	err = ch.Confirm(false)
+	failOnError(err, "Failed to set channel to confirm mode")
+
+	err = ch.Qos(
+		1,     // prefetch count
+		0,     // prefetch size
+		false, // global
+	)
+
+	failOnError(err, "Failed to set QoS")
+
+	q, err := ch.QueueDeclare(
+		"hello", // name
+		true,    // durable
+		false,   // delete when unused
+		false,   // exclusive
+		false,   // no-wait
+		nil,     // arguments
+	)
+	failOnError(err, "Failed to declare a queue")
+
+	store := &server{
+		db: &dbstore{db: db},
+		q:  &q,
+		ch: ch,
 	}
 
-	if err := db.AutoMigrate(&User{}); err != nil {
-		fmt.Println("failed to auto migrate")
-		log.Fatalln(err)
-	}
-
-	store := &server{db: &dbstore{db: db}}
 	r := mux.NewRouter()
 	r.HandleFunc("/create", store.Create).Methods("PUT")
 	r.HandleFunc("/read", store.Read).Methods("POST")
 	r.HandleFunc("/update", store.Update).Methods("PUT")
 	r.HandleFunc("/delete", store.Delete).Methods("POST")
+	r.HandleFunc("/start", store.Start).Methods("POST")
+	r.HandleFunc("/status", store.Status).Methods("GET")
+
 	s := newHttpServer()
 	s.Handler = r
 
@@ -88,7 +139,45 @@ func newHttpServer() *http.Server {
 }
 
 type server struct {
-	db store
+	db *dbstore
+	q  *amqp.Queue
+	ch *amqp.Channel
+}
+
+func (s *server) Start(w http.ResponseWriter, r *http.Request) {
+	var j Job
+	job, err := s.db.CreateJob(&j)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	body, err := json.Marshal(job)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	err = s.ch.Publish(
+		"",       // exchange
+		s.q.Name, // routing key
+		false,    // mandatory
+		false,    // immediate
+		amqp.Publishing{
+			ContentType: "text/plain",
+			Body:        []byte(body),
+		})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(job); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
 
 func (s *server) Create(w http.ResponseWriter, r *http.Request) {
@@ -133,6 +222,27 @@ func (s *server) Read(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *server) Status(w http.ResponseWriter, r *http.Request) {
+	var j Job
+	if err := json.NewDecoder(r.Body).Decode(&j); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	job, err := s.db.GetJob(j.ID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(job); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
 func (s *server) Update(w http.ResponseWriter, r *http.Request) {
 	var u User
 	if err := json.NewDecoder(r.Body).Decode(&u); err != nil {
@@ -153,6 +263,7 @@ func (s *server) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
+
 func (s *server) Delete(w http.ResponseWriter, r *http.Request) {
 	var u User
 	if err := json.NewDecoder(r.Body).Decode(&u); err != nil {
@@ -175,14 +286,24 @@ func (s *server) Delete(w http.ResponseWriter, r *http.Request) {
 }
 
 type store interface {
+	CreateJob(j *Job) (*Job, error)
 	CreateUser(u *User) (*User, error)
 	GetUser(id ksuid.KSUID) (*User, error)
+	GetJob(id ksuid.KSUID) (*Job, error)
 	UpdateUser(u *User) (*User, error)
 	DeleteUser(u *User) (*User, error)
 }
 
 type dbstore struct {
 	db *gorm.DB
+}
+
+func (s *dbstore) CreateJob(j *Job) (*Job, error) {
+	result := s.db.Create(&j)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	return j, nil
 }
 
 func (s *dbstore) CreateUser(u *User) (*User, error) {
@@ -201,6 +322,16 @@ func (s *dbstore) GetUser(id ksuid.KSUID) (*User, error) {
 	}
 	return &user, nil
 }
+
+func (s *dbstore) GetJob(id ksuid.KSUID) (*Job, error) {
+	var j Job
+	result := s.db.Where("id = ?", id).First(&j)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	return &j, nil
+}
+
 func (s *dbstore) UpdateUser(u *User) (*User, error) {
 	result := s.db.Model(&u).Updates(u)
 	if result.Error != nil {
@@ -211,6 +342,7 @@ func (s *dbstore) UpdateUser(u *User) (*User, error) {
 	}
 	return u, nil
 }
+
 func (s *dbstore) DeleteUser(u *User) (*User, error) {
 	result := s.db.Delete(&u)
 	if result.Error != nil {

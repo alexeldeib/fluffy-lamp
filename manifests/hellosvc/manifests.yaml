@@ -18,6 +18,14 @@ spec:
         - image: docker.io/alexeldeib/hellosvc:dev
           imagePullPolicy: IfNotPresent
           name: *name
+          env:
+            - name: RABBITMQ_USE_LONGNAME
+              value: "true"
+            - name: COOKIE
+              valueFrom:
+                secretKeyRef:
+                  name: rabbit-secret
+                  key: COOKIE
           envFrom:
             - secretRef:
                 name: pg-config

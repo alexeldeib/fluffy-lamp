@@ -20,10 +20,10 @@ build:
       context: images/rabbit
       docker:
         dockerfile: Dockerfile
-    - image: docker.io/alexeldeib/helloproduce
-      context: .
-      docker:
-        dockerfile: images/helloproduce/Dockerfile
+    # - image: docker.io/alexeldeib/helloproduce
+    #   context: .
+    #   docker:
+    #     dockerfile: images/helloproduce/Dockerfile
     - image: docker.io/alexeldeib/helloclient
       context: .
       docker:
@@ -36,7 +36,7 @@ deploy:
       - manifests/hellosvc
       - manifests/rabbit
       - manifests/helloclient
-      - manifests/helloproduce
+      # - manifests/helloproduce
 
     hooks:
       before:

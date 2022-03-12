@@ -32,3 +32,4 @@ chmod 600 /var/lib/rabbitmq/.erlang.cookie
 retry 10 rabbitmqctl await_startup -n rabbit@rabbitmq-0.rabbitmq-headless.default.svc.cluster.local
 retry 10 rabbitmqctl authenticate_user 'hellosvc' "$(cat /etc/secrets/COOKIE)" -n rabbit@rabbitmq-0.rabbitmq-headless.default.svc.cluster.local
 /workspace/bin/app
+sleep infinity

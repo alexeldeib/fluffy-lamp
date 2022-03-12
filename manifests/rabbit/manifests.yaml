@@ -15,7 +15,7 @@ data:
     # Logging
     #log.file.level = info #default
     log.console = true
-    log.console.level = debug
+    log.console.level = info
 
     # Restrict guest to localhost.
     loopback_users.guest = true
