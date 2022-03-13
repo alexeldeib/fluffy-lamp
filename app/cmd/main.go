@@ -85,6 +85,10 @@ func main() {
 
 	failOnError(err, "Failed to set QoS")
 
+	confirm := make(chan amqp.Confirmation, 1)
+
+	ch.NotifyPublish(confirm)
+
 	q, err := ch.QueueDeclare(
 		"hello", // name
 		true,    // durable
@@ -96,9 +100,10 @@ func main() {
 	failOnError(err, "Failed to declare a queue")
 
 	store := &server{
-		db: &dbstore{db: db},
-		q:  &q,
-		ch: ch,
+		db:      &dbstore{db: db},
+		q:       &q,
+		ch:      ch,
+		confirm: confirm,
 	}
 
 	r := mux.NewRouter()
@@ -139,9 +144,10 @@ func newHttpServer() *http.Server {
 }
 
 type server struct {
-	db *dbstore
-	q  *amqp.Queue
-	ch *amqp.Channel
+	db      *dbstore
+	q       *amqp.Queue
+	ch      *amqp.Channel
+	confirm chan amqp.Confirmation
 }
 
 func (s *server) Start(w http.ResponseWriter, r *http.Request) {
@@ -169,6 +175,17 @@ func (s *server) Start(w http.ResponseWriter, r *http.Request) {
 		})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	select {
+	case confirm := <-s.confirm:
+		if !confirm.Ack {
+			http.Error(w, "failed to add job to queue", http.StatusInternalServerError)
+			return
+		}
+	case <-time.After(time.Second * 10):
+		http.Error(w, "failed to add job to queue", http.StatusInternalServerError)
 		return
 	}
 

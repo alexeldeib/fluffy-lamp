@@ -165,9 +165,15 @@ func main() {
 				continue
 			}
 
+			d.Ack(false)
 			log.Printf("successfully processed message: %s", j.ID)
 
-			d.Ack(false)
+			b, err := json.Marshal(j)
+			if err != nil {
+				logError(err, "failed to encode message body")
+				continue
+			}
+			log.Printf("processed: %s", string(b))
 		}
 	}()
 
